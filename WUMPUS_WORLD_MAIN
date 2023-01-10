@@ -1,0 +1,335 @@
+//WUMPUS_WORLD_MAIN
+//#Global Includes #include <iostream> #include <string> #include <stdio.h> #include <stdlib.h> #include <time.h> #include <windows.h> #include <vector> #include <cstdlib> #include <ctime> #include <cctype> #include <algorithm>
+
+//Local #Includes
+#include "WUMPUS_WORLD.h"
+
+//Namespace
+using namespace std;
+
+///Defines
+//World size #define DIM_1 8
+#define DIM_2 8
+//World Attributes #define DIM_3 10
+#define OFFSET 1
+#define MAX_PITS 4
+#define MAX_WUMPUS 1
+#define MAX_GOLD 1
+#define MAX_AGENT 4
+
+#define AGENT 0	//Agent Location in world	A == Agent	1 == Agent 0 == No Agent
+#define PIT 1	//Pits are in element 1 of Z P == Pit	1 == Pit 0 == No Pit
+#define BREEZE 2	//Breeze is in element 2 of Z	B == Breeze	1 == Breeze 0 == No Breeze
+#define WUMPUS 3	//Wumpus is in element 3 of Z	W == Wumpus	1 == Wumpus	0 == No Wumpus	Wumpus in Pit == M
+#define STENCH 4	//Stench is in element 4 of Z	S == Stench	1 == Stench 0 == No Stench
+#define GOLD 5	//Gold is in element 5 of Z	G == Gold	1 == Gold	0 == No Gold
+#define FOUL 6		//Stench and Breeze in same element graphics display only #define GOLD_OTHER 7	//Gold is in a breeze or stench or foul element display only
+
+//Agent array flags
+#define VISITED 6	//Agent array to indicate agent has previously visited this square and it is clear #define CLEAR 7		//Agent array to indicate safe squares for future moves
+#define MRV 8 //Minimum remaining value when value is equal to sum of number of Pits and number of Wumpus Gold must be in an unvisited square cleared square
+#define UNSAFE 9 //Agent array to indicate unsafe squares for avoiding Pits
+//Agent Attributes
+#define MAX_ROUTE_LENGTH 1024 //Max route length for agent -- route managment is handled in UpdateAgentRoute()
+ 
+#define MAX_LOOP_COUNTER 2048 // Terminate when count reached #define DISPLAY_LOOP_COUNTER 10
+//Global Variables
+int iAction = 0; //No move, Left, Right, Up, Down, Fire Arrow
+int iScream = 0; //Wumpus is/are still alive if not equal to MAX_WUMPUS
+
+int iArrow_1 = 1; // Agent 1 Arrow not fired yet int iArrow_2 = 1; // Agent 2 Arrow not fired yet int iArrow_3 = 1; // Agent 3 Arrow not fired yet int iArrow_4 = 1; // Agent 4 Arrow not fired yet
+
+int iAgent_1_Alive = 1; //Status of Agent 1 alive or dead int iAgent_2_Alive = 1; //Status of Agent 2 alive or dead int iAgent_3_Alive = 1; //Status of Agent 3 alive or dead int iAgent_4_Alive = 1; //Status of Agent 4 alive or dead
+
+int iStep_1 = 0; //Steps in world -- update each time agent moves to keep track of agent path int iStep_2 = 0; //Steps in world -- update each time agent moves to keep track of agent path int iStep_3 = 0; //Steps in world -- update each time agent moves to keep track of agent path int iStep_4 = 0; //Steps in world -- update each time agent moves to keep track of agent path
+
+int iFoundGold_1 = 0; //Agent 1 found gold int iFoundGold_2 = 0; //Agent 2 found gold int iFoundGold_3 = 0; //Agent 3 found gold int iFoundGold_4 = 0; //Agent 4 found gold
+int iGoldFound = 0;	//When any Agent finds gold set this to 1 and terminate other development will focus on multiple agents finding gold
+int iStep = 0; //Counter for all agents steps returning home to zero set to 1 when all have returned home via function int iInternalCounter = 0;
+
+//int iReverseStep = 0; //Flag to indicate agent is reverseing one step because it cannot find a safe route
+//int iValid = 0;
+int iWumpusFound = 0; int iPitsFound = 0;
+int iLoopCounter = 0;
+//Structures
+struct sAgentRoute
+{
+int x; int y;
+};
+//End Structure
+
+//Agent route array
+struct sAgentRoute Path_1[MAX_ROUTE_LENGTH]; //Agent path in world for returning to origin Path[0].x = 0; Path[0].y = 0 and assessing location for precepts
+//Each step after that is the current Path[iStep].x = x coordinate of agent & Path[iStep].y = y coordinate of agent struct sAgentRoute Path_2[MAX_ROUTE_LENGTH]; //Agent path in world for returning to origin Path[0].x = 0; Path[0].y = 0 and assessing location for precepts
+//Each step after that is the current Path[iStep].x = x coordinate of agent & Path[iStep].y = y coordinate of agent struct sAgentRoute Path_3[MAX_ROUTE_LENGTH]; //Agent path in world for returning to origin Path[0].x = 0; Path[0].y = 0 and assessing location for precepts
+//Each step after that is the current Path[iStep].x = x coordinate of agent & Path[iStep].y = y coordinate of agent
+ 
+struct sAgentRoute Path_4[MAX_ROUTE_LENGTH]; //Agent path in world for returning to origin Path[0].x = 0; Path[0].y = 0 and assessing location for precepts
+//Each step after that is the current Path[iStep].x = x coordinate of agent & Path[iStep].y = y coordinate of agent
+
+//World Array Row Col Depth
+//X,Y coordinates in base plane of Z is world view
+//Pits are in element 1 of Z P == Pit
+//Breeze is in element 2 of Z B == Breeze
+//Wumpus is in element 3 of Z W == Wumpus
+//Stench is in element 4 of Z S == Stench
+//Gold is in element 5 of Z G == Gold int iWorld[DIM_1][DIM_2][DIM_3];
+
+//Agent Array Row Col Depth
+//X,Y coordinates in base plane of Z is agent view A == Agent Location
+//Pit status is in element 1 of Z
+//Breeze status is in element 2 of Z
+//Wumpus status is in element 3 of Z
+//Stench status is in element 4 of Z
+//Gold status is in element 5 of Z
+//V == Visited Square status is in element 6 of Z
+//C == Clear Square status is in element 7 of Z
+//	MRV for square is in element 8 of Z
+//U == Unsafe square status is in element 9 of Z
+//0 == Unknown Square
+int iAgent_1[DIM_1][DIM_2][DIM_3]; int iAgent_2[DIM_1][DIM_2][DIM_3]; int iAgent_3[DIM_1][DIM_2][DIM_3]; int iAgent_4[DIM_1][DIM_2][DIM_3]; int iAgent_KB[DIM_1][DIM_2][DIM_3];
+
+void main(void)
+{
+//Initialize 3 dim array for world and agent with 0's and 1's for MRV and UNSAFE Flags InitializeZeroArray(iWorld);
+InitializeZeroArray(iAgent_1); InitializeZeroArray(iAgent_2); InitializeZeroArray(iAgent_3); InitializeZeroArray(iAgent_4); InitializeZeroArray(iAgent_KB);
+
+
+//Display empty world and blank agent
+//DisplayWorldView(iWorld);
+//DisplayAgentView(iAgent_1);
+//DisplayAgentView(iAgent_2);
+//DisplayAgentView(iAgent_3);
+//DisplayAgentView(iAgent_4);
+//DisplayAgentView(iAgent_KB);
+
+//Create random world PopulateWorld(iWorld);
+
+//Create fixed world
+//FIXEDWORLD(iWorld);
+ 
+//Create Multiple agents
+CreateAgents(iWorld, iAgent_1, iAgent_2, iAgent_3, iAgent_4, Path_1, Path_2, Path_3, Path_4);
+
+//Initial agent perceptions at origin
+iAgent_1_Alive = UpdatePerceptions(iWorld, iAgent_1, Path_1, iStep_1, iWumpusFound, iPitsFound); iAgent_2_Alive = UpdatePerceptions(iWorld, iAgent_2, Path_2, iStep_2, iWumpusFound, iPitsFound); iAgent_3_Alive = UpdatePerceptions(iWorld, iAgent_3, Path_3, iStep_3, iWumpusFound, iPitsFound); iAgent_4_Alive = UpdatePerceptions(iWorld, iAgent_4, Path_4, iStep_4, iWumpusFound, iPitsFound);
+
+//Merge individual perceptions in shared KB
+DevelopCommonKB_ForAgents(iAgent_KB, iAgent_1, iAgent_2, iAgent_3, iAgent_4, iWumpusFound, iPitsFound);
+
+//Display created world, AgentKB DisplayWorldView(iWorld); DisplayAgentView(iAgent_KB);
+
+//Hide routes unless issues occur
+//DisplayAgentRoute(Path_1, iStep_1);
+
+//Pause to verify starting conditions system("pause");
+
+//Make an Initial random move of Agent 1 to either (0,1) or (1,0) iStep_1 = InitialAgent_1_Move(iAgent_1, Path_1, iStep_1);
+//Make an Initial random move of Agent 2 to either (0,DIM_2 - OFFSET - OFFSET) or (1,DIM_2 - OFFSET)
+iStep_2 = InitialAgent_2_Move(iAgent_2, Path_2, iStep_2);
+//Make an Initial random move of Agent 3 to either (DIM_1 - OFFSET - OFFSET, 0) or (DIM1 - OFFSET,
+1)
+iStep_3 = InitialAgent_3_Move(iAgent_3, Path_3, iStep_3);
+//Make an Initial random move of Agent 4 to either (DIM_1 - OFFSET - OFFSET, DIM_2 - OFFSET) or
+(DIM_1 - OFFSET,DIM_2 - OFFSET - OFFSET)
+iStep_4 = InitialAgent_4_Move(iAgent_4, Path_4, iStep_4);
+
+//Update agents location in world array
+UpdateAgentInWorld(iWorld, iAgent_1, iAgent_2, iAgent_3, iAgent_4);
+
+//Update perceptions at new locations
+iAgent_1_Alive = UpdatePerceptions(iWorld, iAgent_1, Path_1, iStep_1, iWumpusFound, iPitsFound); iAgent_2_Alive = UpdatePerceptions(iWorld, iAgent_2, Path_2, iStep_2, iWumpusFound, iPitsFound); iAgent_3_Alive = UpdatePerceptions(iWorld, iAgent_3, Path_3, iStep_3, iWumpusFound, iPitsFound); iAgent_4_Alive = UpdatePerceptions(iWorld, iAgent_4, Path_4, iStep_4, iWumpusFound, iPitsFound);
+
+//Merge individual perceptions in shared KB
+DevelopCommonKB_ForAgents(iAgent_KB, iAgent_1, iAgent_2, iAgent_3, iAgent_4, iWumpusFound, iPitsFound);
+
+//Display current world, agent KB and route to current location DisplayWorldView(iWorld);
+DisplayAgentView(iAgent_KB);
+//Hide routes unless issues occur
+//DisplayAgentRoute(Path_1, iStep_1);
+
+//Pause to verify initial moves system("pause");
+ 
+//Enter into loop until conditions met, determine next move location, and THEN run the UpdateAgentRoute()
+if(iAgent_1_Alive == 1 || iAgent_2_Alive == 1 || iAgent_3_Alive == 1 || iAgent_4_Alive == 1)
+{
+//Loop until an agent finds gold, and live agents have all returned home to exit world while(iGoldFound != 1)
+{
+//If Gold found break out of while Loop if(iGoldFound == 1)
+{
+break;
+}
+//Increment bailout loop counter if(iGoldFound != 1)
+{
+iLoopCounter = iLoopCounter + 1; if(iLoopCounter == MAX_LOOP_COUNTER)
+{
+printf("Max Loop Counter Cutoff!\n"); break;
+}
+}
+
+while(iInternalCounter < DISPLAY_LOOP_COUNTER)
+{
+//Calculate Agent actions, place agent at new location or fire arrow
+iStep_1 = CalculateAgentAction(iWorld, iAgent_1, Path_1, iAgent_1_Alive, iStep_1, iArrow_1, iWumpusFound, iPitsFound);
+iStep_2 = CalculateAgentAction(iWorld, iAgent_2, Path_2, iAgent_2_Alive, iStep_2, iArrow_2, iWumpusFound, iPitsFound);
+iStep_3 = CalculateAgentAction(iWorld, iAgent_3, Path_3, iAgent_3_Alive, iStep_3, iArrow_3, iWumpusFound, iPitsFound);
+iStep_4 = CalculateAgentAction(iWorld, iAgent_4, Path_4, iAgent_4_Alive, iStep_4, iArrow_4, iWumpusFound, iPitsFound);
+
+ 
+
+history of each agent
+
+
+
+
+
+
+
+
+
+iWumpusFound, iPitsFound); iWumpusFound, iPitsFound); iWumpusFound, iPitsFound); iWumpusFound, iPitsFound);
+ 
+//Resets iStep to the lowest occurence of a previously visited location in the path
+
+iStep_1 = UpdateAgentRoute(Path_1, iStep_1); iStep_2 = UpdateAgentRoute(Path_2, iStep_2); iStep_3 = UpdateAgentRoute(Path_3, iStep_3); iStep_4 = UpdateAgentRoute(Path_4, iStep_4);
+
+//Update agents location in world array
+UpdateAgentInWorld(iWorld, iAgent_1, iAgent_2, iAgent_3, iAgent_4);
+
+//Update perceptions and return agents status
+iAgent_1_Alive = UpdatePerceptions(iWorld, iAgent_1, Path_1, iStep_1, iAgent_2_Alive = UpdatePerceptions(iWorld, iAgent_2, Path_2, iStep_2, iAgent_3_Alive = UpdatePerceptions(iWorld, iAgent_3, Path_3, iStep_3, iAgent_4_Alive = UpdatePerceptions(iWorld, iAgent_4, Path_4, iStep_4,
+ 
+//Merge individual perceptions in shared KB
+ 
+DevelopCommonKB_ForAgents(iAgent_KB, iAgent_1, iAgent_2, iAgent_3, iAgent_4, iWumpusFound, iPitsFound);
+
+//Check if all Agents are still alive, if not break while loop and exit if(iAgent_1_Alive == 0)
+{
+//printf("Agent 1 has died!\n");
+}
+if(iAgent_2_Alive == 0)
+{
+//printf("Agent 2 has died!\n");
+}
+if(iAgent_3_Alive == 0)
+{
+//printf("Agent 3 has died!\n");
+}
+if(iAgent_4_Alive == 0)
+{
+//printf("Agent 4 has died!\n");
+}
+
+ 
+
+
+
+
+
+
+iFoundGold_4 == 1)
+ 
+
+//Check if Agent found gold at new location
+iFoundGold_1 = AgentFoundGold(iWorld, iAgent_1, Path_1, iStep_1); iFoundGold_2 = AgentFoundGold(iWorld, iAgent_2, Path_2, iStep_2); iFoundGold_3 = AgentFoundGold(iWorld, iAgent_3, Path_3, iStep_3); iFoundGold_4 = AgentFoundGold(iWorld, iAgent_4, Path_4, iStep_4); if(iFoundGold_1 == 1 || iFoundGold_2 == 1 || iFoundGold_3 == 1 ||
+
+{
+iGoldFound = 1;
+iInternalCounter =DISPLAY_LOOP_COUNTER;
+ 
+}
+else
+{
+
+}
+}
+ 
+
+
+iInternalCounter = iInternalCounter +1;
+ 
+
+ 
+
+iAgent_4_Alive == 0)
+ 
+if(iAgent_1_Alive == 0 && iAgent_2_Alive == 0 && iAgent_3_Alive == 0 &&
+
+{
+printf("All Agents have died!\n"); break;
+ 
+}
+//Display world, agent and route views DisplayWorldView(iWorld); DisplayAgentView(iAgent_KB);
+//DisplayAgentRoute(Path_1, iStep_1); iInternalCounter = 0;
+system("pause");
+}
+}
+
+//If Agent finds gold retrace steps back to origin one at a time and *** avoid collision with other agents !!!
+Other Agents moves have priority
+ 
+if(iGoldFound == 1)
+{
+while(iStep != 1)
+{
+//Agent 1 Position
+if(iStep_1 > 0)
+{
+iStep_1 = ReturnHome(iAgent_1, Path_1, iAgent_1_Alive, iStep_1);
+//DisplayAgentRoute(Path_1, iStep_1);
+}
+else if(iStep_1 == 0)
+{
+if(iStep_1 == 0 && iStep_2 == 0 && iStep_3 == 0 && iStep_4 == 0) iStep = 1;
+}
+//Agent 2 Position
+if(iStep_2 > 0)
+{
+iStep_2 = ReturnHome(iAgent_2, Path_2, iAgent_2_Alive, iStep_2);
+//DisplayAgentRoute(Path_2, iStep_2);
+}
+else if(iStep_1 == 0)
+{
+if(iStep_1 == 0 && iStep_2 == 0 && iStep_3 == 0 && iStep_4 == 0) iStep = 1;
+}
+//Agent 3 Position
+if(iStep_3 > 0)
+{
+iStep_3 = ReturnHome(iAgent_3, Path_3, iAgent_3_Alive, iStep_3);
+//DisplayAgentRoute(Path_3, iStep_3);
+}
+else if(iStep_3 == 0)
+{
+if(iStep_1 == 0 && iStep_2 == 0 && iStep_3 == 0 && iStep_4 == 0) iStep = 1;
+}
+//Agent 4 Position
+if(iStep_4 > 0)
+{
+iStep_4 = ReturnHome(iAgent_4, Path_4, iAgent_4_Alive, iStep_4);
+//DisplayAgentRoute(Path_4, iStep_4);
+}
+else if(iStep_4 == 0)
+{
+if(iStep_1 == 0 && iStep_2 == 0 && iStep_3 == 0 && iStep_4 == 0) iStep = 1;
+}
+
+//Update agents location in world array
+UpdateAgentInWorld(iWorld, iAgent_1, iAgent_2, iAgent_3, iAgent_4);
+
+//Display world, agent and route views
+//DisplayWorldView(iWorld);
+}
+}
+ 
+//Termination conditions if(iGoldFound == 1 && iStep == 1)
+{
+printf("Agents have found the gold and returned home if alive!\n");
+//Display world, agent and route views DisplayWorldView(iWorld); DisplayAgentView(iAgent_KB);
+}
+else if(iAgent_1_Alive != 1 && iAgent_2_Alive != 1 && iAgent_3_Alive != 1 && iAgent_4_Alive != 1)
+{
+printf("All of the Agents have died!\n");
+}
+system("pause");
+
+}//End Main
