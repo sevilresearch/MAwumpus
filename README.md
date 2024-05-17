@@ -1,4 +1,6 @@
-Citation:
+# Citation:
+
+If you use this code for your research, please consider citing:
 
 Perry, J., Sevil, H.E., "A multi-agent adaptation of the rule-based Wumpus World game". Int. J. Artificial Intelligence and Soft Computing, Vol. 7, No. 4, pp. 299–312, 2022.
 
